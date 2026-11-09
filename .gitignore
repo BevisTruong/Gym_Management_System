@@ -1,0 +1,19 @@
+
+# Node.js
+node_modules/
+
+# Supabase Local
+supabase/.temp/
+supabase/.branches/
+
+# Java Spring Boot
+**/target/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
