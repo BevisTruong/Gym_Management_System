@@ -27,6 +27,12 @@ public class MembershipService {
                 "*,membership_plan(name,duration_months,benefits)"));
     }
 
+    public List<Map<String, Object>> list(int limit) {
+        int boundedLimit = Math.min(Math.max(limit, 1), 500);
+        return enrich(db.select("membership", Map.of(), "start_date.desc", boundedLimit,
+                "*,membership_plan(name,duration_months,benefits),member(full_name,phone)"));
+    }
+
     public Map<String, Object> register(Map<String, Object> b, boolean renewal) {
         long memberId = number(b, "memberId"), planId = number(b, "planId");
         Map<String, Object> member = one("member", "member_id", memberId, "Không tìm thấy hội viên");

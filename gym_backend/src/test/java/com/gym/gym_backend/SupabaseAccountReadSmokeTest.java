@@ -98,6 +98,7 @@ class SupabaseAccountReadSmokeTest {
         mvc.perform(get("/api/plans").header("Authorization", auth)).andExpect(status().isOk());
         mvc.perform(get("/api/trainers").header("Authorization", auth)).andExpect(status().isOk());
         mvc.perform(get("/api/memberships/member/0").header("Authorization", auth)).andExpect(status().isOk());
+        mvc.perform(get("/api/memberships").header("Authorization", auth)).andExpect(status().isOk());
         mvc.perform(get("/api/expirations").header("Authorization", auth)).andExpect(status().isOk());
         mvc.perform(get("/api/sessions").header("Authorization", auth)).andExpect(status().isOk());
         mvc.perform(post("/api/sessions/available-trainers").header("Authorization", auth)

@@ -15,6 +15,11 @@ public class MembershipController {
         this.service = service;
     }
 
+    @GetMapping
+    public ApiResponse<List<Map<String, Object>>> list(@RequestParam(defaultValue = "500") int limit) {
+        return ApiResponse.ok(service.list(limit));
+    }
+
     @GetMapping("/member/{memberId}")
     public ApiResponse<List<Map<String, Object>>> list(@PathVariable long memberId) {
         return ApiResponse.ok(service.forMember(memberId));

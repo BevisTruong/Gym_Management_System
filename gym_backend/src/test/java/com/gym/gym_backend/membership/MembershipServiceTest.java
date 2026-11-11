@@ -59,6 +59,21 @@ class MembershipServiceTest {
     }
 
     @Test
+    void listReturnsEnrichedMembershipRowsWithAClampedLimit() {
+        Map<String, Object> saved = membershipRow(18, "2026-05-01", "2026-05-31");
+        when(db.select("membership", Map.of(), "start_date.desc", 500,
+                "*,membership_plan(name,duration_months,benefits),member(full_name,phone)"))
+                .thenReturn(List.of(saved));
+
+        List<Map<String, Object>> results = service.list(900);
+
+        assertEquals(1, results.size());
+        assertEquals("Active", results.getFirst().get("membershipStatus"));
+        verify(db).select("membership", Map.of(), "start_date.desc", 500,
+                "*,membership_plan(name,duration_months,benefits),member(full_name,phone)");
+    }
+
+    @Test
     void registrationRejectsInactiveMemberUnavailablePlanAndPastStartDate() {
         when(db.select("member", Map.of("member_id", "eq.4"), null, 1))
                 .thenReturn(List.of(Map.of("member_id", 4, "status", "Inactive")));

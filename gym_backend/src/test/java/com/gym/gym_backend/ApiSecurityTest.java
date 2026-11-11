@@ -10,8 +10,10 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 
 @SpringBootTest(properties = {
         "supabase.url=http://127.0.0.1:54321",
@@ -30,6 +32,16 @@ class ApiSecurityTest {
     @Test
     void healthEndpointIsPublic() throws Exception {
         mvc.perform(get("/api/health")).andExpect(status().isOk());
+    }
+
+    @Test
+    void browserPreflightIsAllowedForTheConfiguredFrontendOrigin() throws Exception {
+        mvc.perform(options("/api/members")
+                        .header("Origin", "http://localhost:5173")
+                        .header("Access-Control-Request-Method", "GET")
+                        .header("Access-Control-Request-Headers", "authorization,content-type"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:5173"));
     }
 
     @Test
@@ -63,6 +75,8 @@ class ApiSecurityTest {
         mvc.perform(get("/api/trainers").header("Authorization", "Bearer " + trainer))
                 .andExpect(status().isForbidden());
         mvc.perform(get("/api/memberships/member/31").header("Authorization", "Bearer " + trainer))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/memberships").header("Authorization", "Bearer " + trainer))
                 .andExpect(status().isForbidden());
         mvc.perform(get("/api/sessions").header("Authorization", "Bearer " + trainer))
                 .andExpect(status().isForbidden());

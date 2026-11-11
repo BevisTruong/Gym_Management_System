@@ -1,6 +1,6 @@
 # Frontend
 
-Thư mục này là phần giao diện được bàn giao để Thành viên 3 tiếp tục triển khai. Hiện đã có `index.html` và các API adapter trong `src/api/`; giao diện ứng dụng cùng cấu hình npm/Vite cần được bổ sung.
+Giao diện HTML/CSS/JavaScript đã được nối với backend trong `tv3-ui/`. `tv3-ui/index.html` là bản chạy API thật; `tv3-ui/demo.html` là preview cục bộ dùng dữ liệu mẫu. Các API adapter ban đầu vẫn nằm trong `src/api/`.
 
 ## API adapter hiện có
 
@@ -36,17 +36,16 @@ if (!(Test-Path gym_frontend/.env.local)) {
 
 Sau đó mở `gym_frontend/.env.local` và đặt `VITE_API_BASE_URL=http://localhost:8080/api`. Backend cũng cần được cấu hình và chạy theo [hướng dẫn backend](../gym_backend/README.md).
 
-## Cấu hình chạy ứng dụng
+## Chạy giao diện tích hợp
 
-Frontend hiện chưa có `package.json` riêng. Khi Thành viên 3 hoàn thiện cấu hình Vite, cài dependency và chạy ứng dụng:
+Khởi động backend theo [README backend](../gym_backend/README.md), sau đó mở terminal thứ hai:
 
 ```powershell
-cd gym_frontend
-npm ci
-npm run dev
+cd gym_frontend/tv3-ui
+python -m http.server 5173
 ```
 
-Các lệnh trên dùng được sau khi đã tạo `package.json` cùng `package-lock.json` và scripts tương ứng. Nếu chưa có lockfile, chạy `npm install` một lần để tạo lockfile; commit `package-lock.json` để các thành viên cài cùng phiên bản dependency.
+Mở `http://localhost:5173/` và đăng nhập bằng tài khoản thật. Giao diện mặc định gọi `http://localhost:8080/api`. Nếu backend ở URL khác, đặt `window.GYM_API_BASE_URL` trước khi nạp `api.js` trong `tv3-ui/index.html`. Chỉ cấu hình khóa Supabase ở backend; trình duyệt không kết nối trực tiếp đến Supabase.
 
 ## Xử lý đăng nhập và lỗi API
 
