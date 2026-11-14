@@ -55,7 +55,8 @@ async function loadData() {
 
 async function signIn(username, password) {
   user = await API.login(username, password);
-  await loadData();
+  data = emptyState();
+  if (!user.mustChangePassword) await loadData();
   page = user.mustChangePassword ? 'password' : user.role === 'Member' ? 'member' : user.role === 'Trainer' ? 'trainer' : 'home';
   render();
 }
@@ -64,7 +65,8 @@ async function restoreSession() {
   if (!API.hasToken()) return render();
   try {
     user = await API.currentUser();
-    await loadData();
+    data = emptyState();
+    if (!user.mustChangePassword) await loadData();
     page = user.mustChangePassword ? 'password' : user.role === 'Member' ? 'member' : user.role === 'Trainer' ? 'trainer' : 'home';
   } catch (error) {
     API.clearToken();
@@ -77,6 +79,7 @@ async function restoreSession() {
 function isStaff() { return ['Admin', 'Staff'].includes(user?.role); }
 function isAdmin() { return user?.role === 'Admin'; }
 function allowed(target) {
+  if (user?.mustChangePassword) return target === 'password';
   if (target === 'home' || target === 'password') return true;
   if (isStaff()) return ['members', 'plans', 'memberships', 'trainers', 'sessions', 'expirations'].includes(target) || (isAdmin() && target === 'accounts');
   return user?.role === 'Member' ? target === 'member' : user?.role === 'Trainer' && target === 'trainer';
@@ -210,6 +213,29 @@ function showDialog(title, content) {
 
 function showTemporaryPassword(title, password) {
   showDialog('Temporary password', `<div class="help-content"><p>${esc(title)}. Copy this password and give it to the user through a private channel. It will not be shown again.</p>${formField('Temporary password', 'temporary-password', password, 'text', false)}<div class="form-actions"><button class="btn primary" data-action="close">Done</button></div></div>`);
+}
+
+async function finishAccountCreation(title, result, targetPage, updateStatus) {
+  modal.close();
+  page = targetPage;
+  render();
+  showTemporaryPassword(title, result.temporaryPassword);
+
+  const warnings = [];
+  if (updateStatus) {
+    try {
+      await updateStatus();
+    } catch (error) {
+      warnings.push(`Account created, but status was not updated: ${error.message}`);
+    }
+  }
+  try {
+    await loadData();
+    render();
+  } catch (error) {
+    warnings.push(`Account created, but data could not be refreshed: ${error.message}`);
+  }
+  if (warnings.length) toast(warnings.join(' '));
 }
 
 function formDialog(title, formId, fields, submitLabel = 'Save') {
@@ -358,22 +384,30 @@ app.addEventListener('submit', async event => {
         if (!existingId && error.status === 409 && String(error.message).toLowerCase().includes('trùng') && confirm('A similar member exists. Create this profile anyway?')) result = await API.post('/members', { ...payload, confirmPossibleDuplicate: true });
         else throw error;
       }
-      if (!existingId && values.status === 'Inactive') await API.patch(`/members/${result.member_id}/status`, { status: 'Inactive' });
+      if (!existingId) {
+        await finishAccountCreation('Member account created', result, 'members', values.status === 'Inactive'
+          ? () => API.patch(`/members/${result.member_id}/status`, { status: 'Inactive' }) : null);
+        return;
+      }
       if (existingId) {
         const previous = member(existingId);
         if (previous.status !== values.status) await API.patch(`/members/${existingId}/status`, { status: values.status });
       }
       await loadData(); modal.close(); page = 'members'; render();
-      if (result.temporaryPassword) showTemporaryPassword('Member account created', result.temporaryPassword); else toast('Member saved.');
+      toast('Member saved.');
       return;
     }
     if (form.id === 'trainer-form') {
       const payload = { fullName: values.full_name, phone: values.phone, email: values.email, specialization: values.specialization || '', yearsOfExperience: Number(values.years_of_experience || 0) };
       const result = existingId ? await API.put(`/trainers/${existingId}`, payload) : await API.post('/trainers', payload);
-      if (existingId && trainer(existingId).status !== values.status) await API.patch(`/trainers/${existingId}/status`, { status: values.status });
-      if (!existingId && values.status === 'Inactive') await API.patch(`/trainers/${result.trainer_id}/status`, { status: 'Inactive' });
+      if (!existingId) {
+        await finishAccountCreation('Trainer account created', result, 'trainers', values.status === 'Inactive'
+          ? () => API.patch(`/trainers/${result.trainer_id}/status`, { status: 'Inactive' }) : null);
+        return;
+      }
+      if (trainer(existingId).status !== values.status) await API.patch(`/trainers/${existingId}/status`, { status: values.status });
       await loadData(); modal.close(); render();
-      if (result.temporaryPassword) showTemporaryPassword('Trainer account created', result.temporaryPassword); else toast('Trainer saved.');
+      toast('Trainer saved.');
       return;
     }
     if (form.id === 'plan-form') {
@@ -397,11 +431,20 @@ app.addEventListener('submit', async event => {
     }
     if (form.id === 'account-form') {
       const result = await API.post('/accounts', { fullName: values.full_name, username: values.username, role: values.role });
-      await loadData(); modal.close(); render(); showTemporaryPassword('Account created', result.temporaryPassword); return;
+      await finishAccountCreation('Account created', result, 'accounts'); return;
     }
     if (form.id === 'password-form') {
       const result = await API.changePassword(values.currentPassword, values.newPassword, values.confirmPassword);
-      user = result; await loadData(); page = user.role === 'Member' ? 'member' : user.role === 'Trainer' ? 'trainer' : 'home'; render(); toast('Password updated.');
+      user = result;
+      page = user.role === 'Member' ? 'member' : user.role === 'Trainer' ? 'trainer' : 'home';
+      render();
+      try {
+        await loadData();
+        render();
+        toast('Password updated.');
+      } catch (error) {
+        toast(`Password updated, but data could not be refreshed: ${error.message}`);
+      }
     }
   } catch (error) { showError(error, form); }
 });
