@@ -2,6 +2,7 @@ package com.gym.gym_backend.account;
 
 import com.gym.gym_backend.common.exception.ApiException;
 import com.gym.gym_backend.common.util.Input;
+import com.gym.gym_backend.common.security.UsernameRules;
 import com.gym.gym_backend.infrastructure.supabase.SupabaseDataClient;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,7 @@ public class AccountService {
     public Map<String, Object> create(Map<String, Object> b) {
         String username = Input.text(b, "username", true, 50), name = Input.text(b, "fullName", true, 100),
                 role = Input.text(b, "role", true, 10);
+        UsernameRules.validate(username);
         if (!Set.of("Admin", "Staff").contains(role))
             throw ApiException.badRequest("Admin chỉ có thể tạo tài khoản Admin hoặc Staff tại đây");
         String temp = password();

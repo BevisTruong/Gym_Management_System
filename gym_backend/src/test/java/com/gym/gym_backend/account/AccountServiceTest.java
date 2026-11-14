@@ -54,6 +54,29 @@ class AccountServiceTest {
     }
 
     @Test
+    void createRejectsUsernamesThatCannotBeUsedToLogIn() {
+        for (String username : List.of("staff/01", "nhân viên", "staff#01")) {
+            assertEquals(400, assertThrows(ApiException.class, () -> service().create(Map.of(
+                    "username", username, "fullName", "Staff", "role", "Staff"))).status().value());
+        }
+        verify(db, never()).insert(eq("account"), anyMap());
+    }
+
+    @Test
+    void createAcceptsAUsernameWithCharactersAllowedAtLogin() {
+        when(encoder.encode(org.mockito.ArgumentMatchers.anyString())).thenReturn("salted-hash");
+        when(db.insert(eq("account"), anyMap())).thenAnswer(call ->
+                List.of(new HashMap<>(call.getArgument(1, Map.class))));
+
+        Map<String, Object> result = service().create(Map.of("username", "staff.01+gym", "fullName", "Staff",
+                "role", "Staff"));
+
+        assertEquals("staff.01+gym", result.get("username"));
+        assertEquals(0, jakarta.validation.Validation.buildDefaultValidatorFactory().getValidator()
+                .validate(new com.gym.gym_backend.auth.dto.LoginRequest("staff.01+gym", "password")).size());
+    }
+
+    @Test
     void createRejectsMemberAndTrainerRolesBecauseTheyMustBeCreatedWithProfiles() {
         assertEquals(400, assertThrows(ApiException.class, () -> service().create(Map.of("username", "x",
                 "fullName", "X", "role", "Member"))).status().value());
