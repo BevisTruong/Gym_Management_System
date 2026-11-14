@@ -114,7 +114,7 @@ function recordsTable(headers, records, cells, emptyText = 'No records found.') 
 function filtered(list, field = 'full_name') {
   return list.filter(item => {
     const text = [item[field], item.phone, item.email, item.id, item.username].join(' ').toLowerCase();
-    return (!query || text.includes(query.toLowerCase())) && (!filter || item.status === filter || statusOfMembership(item) === filter);
+    return (!query || text.includes(query.toLowerCase())) && (!filter || item.status === filter);
   });
 }
 

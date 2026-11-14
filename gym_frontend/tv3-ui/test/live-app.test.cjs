@@ -65,6 +65,40 @@ test('dialog close buttons close the modal', async () => {
   assert.equal(state.modal.open, false);
 });
 
+test('active filter excludes inactive members, trainers, and locked accounts', () => {
+  const state = appWith();
+  vm.runInContext(`
+    user = { role: 'Admin', fullName: 'Admin', accountId: 99, mustChangePassword: false };
+    filter = 'Active';
+    data.members = [{ id: 1, full_name: 'Active member', status: 'Active' }, { id: 2, full_name: 'Inactive member', status: 'Inactive' }];
+    data.trainers = [{ id: 1, full_name: 'Active trainer', status: 'Active' }, { id: 2, full_name: 'Inactive trainer', status: 'Inactive' }];
+    data.accounts = [{ id: 1, full_name: 'Active account', status: 'Active' }, { id: 2, full_name: 'Locked account', status: 'Locked' }];
+  `, state.context);
+  for (const [page, active, inactive] of [
+    ['memberPage()', 'Active member', 'Inactive member'],
+    ['trainerPage()', 'Active trainer', 'Inactive trainer'],
+    ['accountPage()', 'Active account', 'Locked account'],
+  ]) {
+    const html = vm.runInContext(page, state.context);
+    assert.match(html, new RegExp(active));
+    assert.doesNotMatch(html, new RegExp(inactive));
+  }
+});
+
+test('membership filter continues to use membership status', () => {
+  const state = appWith();
+  vm.runInContext(`
+    filter = 'Active';
+    data.memberships = [
+      { membership_id: 1, member_id: 1, plan_id: 1, membershipStatus: 'Active' },
+      { membership_id: 2, member_id: 2, plan_id: 1, membershipStatus: 'Expired' }
+    ];
+  `, state.context);
+  const html = vm.runInContext('membershipPage()', state.context);
+  assert.match(html, /Member 1/);
+  assert.doesNotMatch(html, /Member 2/);
+});
+
 test('first login opens password page without requesting protected data', async () => {
   let loads = 0;
   const { context, app } = appWith({
