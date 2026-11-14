@@ -39,6 +39,17 @@ class SessionServiceTest {
     }
 
     @Test
+    void scheduledFilterIsSentToDatabaseBeforeLimit() {
+        when(db.select(eq("training_session"), anyMap(), eq("session_date.asc,start_time.asc"), eq(1),
+                eq("*,member(full_name,phone,training_objective),trainer(full_name)"))).thenReturn(List.of());
+        service.list(null, null, null, "Scheduled", 1);
+        verify(db).select(eq("training_session"), org.mockito.ArgumentMatchers.argThat(filters ->
+                "eq.Scheduled".equals(filters.get("status")) && filters.get("or").contains("session_date.gt.2026-05-10")
+                && filters.get("or").contains("end_time.gt.10:00")), eq("session_date.asc,start_time.asc"), eq(1),
+                eq("*,member(full_name,phone,training_objective),trainer(full_name)"));
+    }
+
+    @Test
     void createValidSessionChecksActiveProfilesMembershipAndPersists() {
         validProfileAndMembership();
         when(db.select(eq("training_session"), anyMap(), eq(null), eq(1))).thenReturn(List.of());

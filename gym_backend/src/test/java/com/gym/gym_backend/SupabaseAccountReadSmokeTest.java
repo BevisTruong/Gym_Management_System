@@ -41,8 +41,11 @@ class SupabaseAccountReadSmokeTest {
 
     @Test
     void backendReadsAdminAccountsFromConfiguredSupabase() throws Exception {
-        String token = jwtService.issue(new CurrentUser(0, "smoke-check", "Read-only smoke check", UserRole.Admin,
-                null, null, false));
+        var admins = supabase.select("account", java.util.Map.of("role", "eq.Admin", "status", "eq.Active"), "account_id.asc", 1);
+        assertFalse(admins.isEmpty());
+        var admin = admins.getFirst();
+        var user = new com.gym.gym_backend.auth.AuthService(supabase, null, jwtService, "", 1).currentUser(admin);
+        String token = jwtService.issue(user, String.valueOf(admin.get("password_hash")));
 
         MvcResult result = mvc.perform(get("/api/accounts").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())

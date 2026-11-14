@@ -94,14 +94,13 @@ class TrainerServiceTest {
     void updateSynchronizesAccountIdentityAndRejectsEmptyUpdate() {
         when(db.select("trainer", Map.of("trainer_id", "eq.21"), null, 1))
                 .thenReturn(List.of(Map.of("trainer_id", 21, "phone", "0901234567", "full_name", "Coach")));
-        when(db.update(eq("trainer"), eq("trainer_id"), eq(21L), anyMap()))
+        when(db.rpc(eq("update_trainer_profile"), anyMap()))
                 .thenReturn(List.of(Map.of("trainer_id", 21, "phone", "0907654321", "full_name", "Coach Two")));
-        when(db.update(eq("account"), eq("trainer_id"), eq(21L), anyMap())).thenReturn(List.of());
 
         service.update(21, Map.of("phone", "0907654321", "fullName", "Coach Two"));
 
-        verify(db).update("account", "trainer_id", 21L,
-                Map.of("username", "0907654321", "full_name", "Coach Two"));
+        verify(db).rpc("update_trainer_profile", Map.of("p_id", 21L, "p_values",
+                Map.of("phone", "0907654321", "full_name", "Coach Two")));
         assertEquals(400, assertThrows(ApiException.class, () -> service.update(21, Map.of())).status().value());
     }
 

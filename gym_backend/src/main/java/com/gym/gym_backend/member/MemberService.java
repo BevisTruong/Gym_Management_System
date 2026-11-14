@@ -79,17 +79,8 @@ public class MemberService {
         if (values.containsKey("date_of_birth")
                 && !LocalDate.parse(values.get("date_of_birth").toString()).isBefore(LocalDate.now(clock)))
             throw ApiException.badRequest("date_of_birth phải là ngày trong quá khứ");
-        Map<String, Object> saved = db.update("member", "member_id", id, values).stream().findFirst()
+        return db.rpc("update_member_profile", Map.of("p_id", id, "p_values", values)).stream().findFirst()
                 .orElseThrow(() -> ApiException.notFound("Không tìm thấy hội viên"));
-        if (values.containsKey("phone") || values.containsKey("full_name")) {
-            Map<String, Object> accountUpdate = new HashMap<>();
-            if (values.containsKey("phone"))
-                accountUpdate.put("username", values.get("phone"));
-            if (values.containsKey("full_name"))
-                accountUpdate.put("full_name", values.get("full_name"));
-            db.update("account", "member_id", id, accountUpdate);
-        }
-        return saved;
     }
 
     public Map<String, Object> status(long id, String status) {
@@ -108,8 +99,10 @@ public class MemberService {
 
     private Map<String, Object> profile(Map<String, Object> b, boolean creating) {
         Map<String, Object> v = new LinkedHashMap<>();
-        put(v, b, "fullName", "full_name", true, 100);
-        put(v, b, "gender", "gender", true, 20);
+        if (creating || b.containsKey("fullName"))
+            put(v, b, "fullName", "full_name", true, 100);
+        if (creating || b.containsKey("gender"))
+            put(v, b, "gender", "gender", true, 20);
         if (b.containsKey("dateOfBirth"))
             v.put("date_of_birth", Input.date(b, "dateOfBirth").toString());
         else if (creating)

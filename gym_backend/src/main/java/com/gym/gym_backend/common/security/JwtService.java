@@ -32,7 +32,7 @@ public class JwtService {
         this.lifetimeSeconds = lifetimeSeconds;
     }
 
-    public String issue(CurrentUser user) {
+    public String issue(CurrentUser user, String passwordHash) {
         try {
             String header = encode(mapper.writeValueAsBytes(Map.of("alg", "HS256", "typ", "JWT")));
             Map<String, Object> claims = new java.util.HashMap<>();
@@ -43,6 +43,7 @@ public class JwtService {
             claims.put("memberId", user.memberId());
             claims.put("trainerId", user.trainerId());
             claims.put("mustChangePassword", user.mustChangePassword());
+            claims.put("credential", credentialFingerprint(passwordHash));
             claims.put("exp", Instant.now().getEpochSecond() + lifetimeSeconds);
             String payload = encode(mapper.writeValueAsBytes(claims));
             String unsigned = header + "." + payload;
@@ -50,6 +51,23 @@ public class JwtService {
         } catch (Exception e) {
             throw new IllegalStateException("Could not issue access token", e);
         }
+    }
+
+    public boolean matchesCredential(String token, String passwordHash) {
+        try {
+            String[] parts = token.split("\\.");
+            Map<?, ?> claims = mapper.readValue(Base64.getUrlDecoder().decode(parts[1]), Map.class);
+            Object credential = claims.get("credential");
+            return credential instanceof String value && java.security.MessageDigest.isEqual(
+                    value.getBytes(StandardCharsets.US_ASCII),
+                    credentialFingerprint(passwordHash).getBytes(StandardCharsets.US_ASCII));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private String credentialFingerprint(String passwordHash) throws Exception {
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(sign("credential:" + passwordHash));
     }
 
     public CurrentUser verify(String token) {

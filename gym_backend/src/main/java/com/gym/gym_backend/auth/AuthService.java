@@ -45,7 +45,7 @@ public class AuthService {
         if (!"Active".equals(account.get("status")))
             throw ApiException.unauthorized("Tài khoản đã bị khóa");
         CurrentUser user = currentUser(account);
-        return new LoginResponse(jwt.issue(user), "Bearer", tokenLifetime, user);
+        return new LoginResponse(jwt.issue(user, String.valueOf(account.get("password_hash"))), "Bearer", tokenLifetime, user);
     }
 
     public LoginResponse bootstrap(String token, BootstrapRequest request) {
@@ -63,7 +63,7 @@ public class AuthService {
         newAccount.put("must_change_password", false);
         Map<String, Object> created = db.insert("account", newAccount).getFirst();
         CurrentUser user = currentUser(created);
-        return new LoginResponse(jwt.issue(user), "Bearer", tokenLifetime, user);
+        return new LoginResponse(jwt.issue(user, String.valueOf(created.get("password_hash"))), "Bearer", tokenLifetime, user);
     }
 
     public LoginResponse changePassword(CurrentUser user, ChangePasswordRequest request) {
@@ -74,8 +74,9 @@ public class AuthService {
             throw ApiException.badRequest("Mật khẩu hiện tại không chính xác");
         Map<String, Object> update = Map.of("password_hash", passwords.encode(request.newPassword()),
                 "must_change_password", false);
-        CurrentUser updated = currentUser(db.update("account", "account_id", user.accountId(), update).getFirst());
-        return new LoginResponse(jwt.issue(updated), "Bearer", tokenLifetime, updated);
+        Map<String, Object> saved = db.update("account", "account_id", user.accountId(), update).getFirst();
+        CurrentUser updated = currentUser(saved);
+        return new LoginResponse(jwt.issue(updated, String.valueOf(saved.get("password_hash"))), "Bearer", tokenLifetime, updated);
     }
 
     public Map<String, Object> byId(long id) {

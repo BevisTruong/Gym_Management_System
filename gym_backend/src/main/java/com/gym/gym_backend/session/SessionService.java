@@ -28,8 +28,17 @@ public class SessionService {
             f.put("member_id", "eq." + member);
         if (trainer != null)
             f.put("trainer_id", "eq." + trainer);
-        if (status != null && !status.equals("Completed"))
+        if ("Scheduled".equals(status) || "Completed".equals(status)) {
+            LocalDateTime now = LocalDateTime.now(clock);
+            String comparison = "Scheduled".equals(status) ? "gt" : "lte";
+            String dateComparison = "Scheduled".equals(status) ? "gt" : "lt";
+            f.put("status", "eq.Scheduled");
+            f.put("or", "(session_date." + dateComparison + "." + now.toLocalDate()
+                    + ",and(session_date.eq." + now.toLocalDate() + ",end_time." + comparison + "."
+                    + now.toLocalTime() + "))");
+        } else if (status != null) {
             f.put("status", "eq." + status);
+        }
         List<Map<String, Object>> rows = withCalculated(
                 db.select("training_session", f, "session_date.asc,start_time.asc", Math.min(Math.max(limit, 1), 500),
                         "*,member(full_name,phone,training_objective),trainer(full_name)"));

@@ -122,7 +122,7 @@ class GymWorkflowApiTest {
 
     @Test
     void memberCreationLoginPasswordChangeRegistrationSchedulingAndPersonalPortalWorkTogether() throws Exception {
-        String staffToken = jwtService.issue(new CurrentUser(1, "staff", "Staff", UserRole.Staff, null, null, false));
+        String staffToken = token(new CurrentUser(1, "staff", "Staff", UserRole.Staff, null, null, false));
         String memberBody = """
                 {"fullName":"Nguyen Van An","gender":"Male","dateOfBirth":"1995-02-11",
                  "phone":"0901234567","email":"an@example.com","trainingObjective":"Strength"}
@@ -180,5 +180,21 @@ class GymWorkflowApiTest {
                 .andExpect(jsonPath("$.data.memberships[0].membershipStatus").value("Upcoming"))
                 .andExpect(jsonPath("$.data.sessions[0].session_id").value(70))
                 .andExpect(jsonPath("$.data.profile.internal_note").doesNotExist());
+    }
+
+    private String token(CurrentUser user) {
+        var row = new java.util.HashMap<String, Object>();
+        row.put("account_id", user.accountId());
+        row.put("username", user.username());
+        row.put("full_name", user.fullName());
+        row.put("role", user.role().name());
+        row.put("member_id", user.memberId());
+        row.put("trainer_id", user.trainerId());
+        row.put("must_change_password", user.mustChangePassword());
+        row.put("status", "Active");
+        row.put("password_hash", "test-hash");
+        org.mockito.Mockito.when(db.select("account", java.util.Map.of("account_id", "eq." + user.accountId()), null, 1))
+                .thenReturn(java.util.List.of(row));
+        return jwtService.issue(user, "test-hash");
     }
 }

@@ -61,7 +61,7 @@ public final class Input {
     }
 
     public static void phone(String value) {
-        if (value == null || !Pattern.matches("\\+?[0-9][0-9\\s().-]{6,19}", value))
+        if (value == null || !Pattern.matches("\\+?[0-9][0-9 ().-]{6,19}", value))
             throw ApiException.badRequest("phone không đúng định dạng");
     }
 

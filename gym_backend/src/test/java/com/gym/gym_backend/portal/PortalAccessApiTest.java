@@ -46,7 +46,7 @@ class PortalAccessApiTest {
                 eq("*,membership_plan(name,duration_months,benefits)"))).thenReturn(List.of());
         when(db.select(eq("training_session"), eq(Map.of("member_id", "eq.31")),
                 eq("session_date.desc,start_time.desc"), eq(500), eq("*,trainer(full_name)"))).thenReturn(List.of());
-        String token = jwtService.issue(new CurrentUser(8, "member", "Member One", UserRole.Member, 31L, null, false));
+        String token = token(new CurrentUser(8, "member", "Member One", UserRole.Member, 31L, null, false));
 
         mvc.perform(get("/api/portal/member").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
@@ -65,7 +65,7 @@ class PortalAccessApiTest {
                 eq("session_date.asc,start_time.asc"), eq(500), eq("*,member(full_name,training_objective)")))
                 .thenReturn(List.of(Map.of("session_id", 70, "status", "Scheduled", "session_date", "2026-12-01",
                         "start_time", "09:00", "end_time", "10:00", "member", Map.of("full_name", "Client"))));
-        String token = jwtService.issue(new CurrentUser(9, "trainer", "Trainer Five", UserRole.Trainer, null, 5L,
+        String token = token(new CurrentUser(9, "trainer", "Trainer Five", UserRole.Trainer, null, 5L,
                 false));
 
         mvc.perform(get("/api/portal/trainer/schedule").header("Authorization", "Bearer " + token))
@@ -75,5 +75,21 @@ class PortalAccessApiTest {
 
         verify(db).select(eq("training_session"), eq(Map.of("trainer_id", "eq.5")),
                 eq("session_date.asc,start_time.asc"), eq(500), eq("*,member(full_name,training_objective)"));
+    }
+
+    private String token(CurrentUser user) {
+        var row = new java.util.HashMap<String, Object>();
+        row.put("account_id", user.accountId());
+        row.put("username", user.username());
+        row.put("full_name", user.fullName());
+        row.put("role", user.role().name());
+        row.put("member_id", user.memberId());
+        row.put("trainer_id", user.trainerId());
+        row.put("must_change_password", user.mustChangePassword());
+        row.put("status", "Active");
+        row.put("password_hash", "test-hash");
+        org.mockito.Mockito.when(db.select("account", java.util.Map.of("account_id", "eq." + user.accountId()), null, 1))
+                .thenReturn(java.util.List.of(row));
+        return jwtService.issue(user, "test-hash");
     }
 }

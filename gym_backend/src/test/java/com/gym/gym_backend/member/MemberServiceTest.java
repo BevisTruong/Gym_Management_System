@@ -120,18 +120,25 @@ class MemberServiceTest {
     }
 
     @Test
+    void updateAllowsAddressWithoutResendingNameAndGender() {
+        when(db.select("member", Map.of("member_id", "eq.41"), null, 1)).thenReturn(List.of(memberRow(41L)));
+        when(db.rpc(eq("update_member_profile"), anyMap())).thenReturn(List.of(memberRow(41L)));
+        service.update(41L, Map.of("address", "District 1"));
+        verify(db).rpc("update_member_profile", Map.of("p_id", 41L, "p_values", Map.of("address", "District 1")));
+    }
+
+    @Test
     void updateSynchronizesChangedPhoneWithAccountUsername() {
         Map<String, Object> original = memberRow(41L);
         when(db.select("member", Map.of("member_id", "eq.41"), null, 1)).thenReturn(List.of(original));
         Map<String, Object> saved = memberRow(41L);
         saved.put("phone", "0907654321");
-        when(db.update(eq("member"), eq("member_id"), eq(41L), anyMap())).thenReturn(List.of(saved));
-        when(db.update(eq("account"), eq("member_id"), eq(41L), anyMap())).thenReturn(List.of());
+        when(db.rpc(eq("update_member_profile"), anyMap())).thenReturn(List.of(saved));
 
         service.update(41L, Map.of("phone", "0907654321", "fullName", "Nguyen Van An", "gender", "Male"));
 
-        verify(db).update("account", "member_id", 41L,
-                Map.of("username", "0907654321", "full_name", "Nguyen Van An"));
+        verify(db).rpc("update_member_profile", Map.of("p_id", 41L, "p_values",
+                Map.of("phone", "0907654321", "full_name", "Nguyen Van An", "gender", "Male")));
     }
 
     private static Map<String, Object> validMember() {

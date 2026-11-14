@@ -65,16 +65,8 @@ public class TrainerService {
         Map<String, Object> v = values(b, false);
         if (v.isEmpty())
             throw ApiException.badRequest("Không có trường nào để cập nhật");
-        Map<String, Object> saved = db.update("trainer", "trainer_id", id, v).getFirst();
-        if (v.containsKey("phone") || v.containsKey("full_name")) {
-            Map<String, Object> a = new HashMap<>();
-            if (v.containsKey("phone"))
-                a.put("username", v.get("phone"));
-            if (v.containsKey("full_name"))
-                a.put("full_name", v.get("full_name"));
-            db.update("account", "trainer_id", id, a);
-        }
-        return saved;
+        return db.rpc("update_trainer_profile", Map.of("p_id", id, "p_values", v)).stream().findFirst()
+                .orElseThrow(() -> ApiException.notFound("Không tìm thấy huấn luyện viên"));
     }
 
     public Map<String, Object> status(long id, String status) {
