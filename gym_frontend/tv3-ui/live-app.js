@@ -316,7 +316,7 @@ function passwordPage() {
 
 function refreshCurrentPage() { render(); }
 
-app.addEventListener('click', async event => {
+async function handleClick(event) {
   const nav = event.target.closest('[data-nav]');
   if (nav) { page = nav.dataset.nav; query = ''; filter = ''; render(); return; }
   const actionButton = event.target.closest('[data-action]');
@@ -355,14 +355,17 @@ app.addEventListener('click', async event => {
       showTemporaryPassword('The account was reset', result.temporaryPassword);
     }
   } catch (error) { showError(error); }
-});
+}
+
+app.addEventListener('click', handleClick);
+modal.addEventListener('click', handleClick);
 
 app.addEventListener('input', event => {
   if (event.target.id === 'search-records') { query = event.target.value; render(); const input = document.querySelector('#search-records'); input?.focus(); input?.setSelectionRange(query.length, query.length); }
 });
 app.addEventListener('change', event => { if (event.target.id === 'filter-status') { filter = event.target.value; render(); } });
 
-app.addEventListener('submit', async event => {
+async function handleSubmit(event) {
   const form = event.target;
   if (!form.matches('form')) return;
   event.preventDefault();
@@ -447,7 +450,10 @@ app.addEventListener('submit', async event => {
       }
     }
   } catch (error) { showError(error, form); }
-});
+}
+
+app.addEventListener('submit', handleSubmit);
+modal.addEventListener('submit', handleSubmit);
 
 function showError(error, form = null) {
   if (error.status === 401 && user) {

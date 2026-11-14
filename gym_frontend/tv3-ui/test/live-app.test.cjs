@@ -7,9 +7,10 @@ const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '..', 'live-app.js'), 'utf8');
 
 function appWith(apiOverrides = {}) {
-  const app = { innerHTML: '', addEventListener() {} };
+  const app = { innerHTML: '', listeners: {}, addEventListener(type, handler) { this.listeners[type] = handler; } };
   const modal = {
-    innerHTML: '', open: false,
+    innerHTML: '', open: false, listeners: {},
+    addEventListener(type, handler) { this.listeners[type] = handler; },
     showModal() { this.open = true; },
     close() { this.open = false; },
     querySelector() { return null; },
@@ -26,11 +27,43 @@ function appWith(apiOverrides = {}) {
     document: { querySelector: selector => ({ '#app': app, '#modal': modal, '#toast': toast })[selector] },
     setTimeout: () => 1,
     clearTimeout() {},
+    FormData: class { constructor(form) { return Object.entries(form.values); } },
     console,
   });
   vm.runInContext(source, context);
   return { context, app, modal, toast, api };
 }
+
+test('dialog form submission calls the account API and prevents navigation', async () => {
+  const calls = [];
+  const state = appWith({
+    post: async (url, body) => {
+      calls.push({ url, body });
+      return { temporaryPassword: 'test-temporary-password' };
+    },
+  });
+  vm.runInContext("user = { role: 'Admin', fullName: 'Admin', mustChangePassword: false }", state.context);
+  state.modal.open = true;
+  let prevented = false;
+  await state.modal.listeners.submit({
+    target: { id: 'account-form', dataset: {}, matches: () => true,
+      values: { full_name: 'Staff', username: 'staff', role: 'Staff' } },
+    preventDefault() { prevented = true; },
+  });
+  assert.equal(prevented, true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, '/accounts');
+  assert.equal(calls[0].body.username, 'staff');
+  assert.match(state.modal.innerHTML, /test-temporary-password/);
+});
+
+test('dialog close buttons close the modal', async () => {
+  const state = appWith();
+  state.modal.open = true;
+  const button = { dataset: { action: 'close' } };
+  await state.modal.listeners.click({ target: { closest: selector => selector === '[data-action]' ? button : null } });
+  assert.equal(state.modal.open, false);
+});
 
 test('first login opens password page without requesting protected data', async () => {
   let loads = 0;
