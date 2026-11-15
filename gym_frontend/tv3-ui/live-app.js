@@ -28,6 +28,14 @@ const trainer = id => row('trainers', id);
 const plan = id => row('plans', id);
 const statusOfMembership = item => item.membershipStatus || (today() < item.start_date ? 'Upcoming' : today() > item.end_date ? 'Expired' : 'Active');
 
+function contactPhone(value) {
+  if (value == null || !String(value).trim()) return '<small>Phone unavailable</small>';
+  const number = String(value).trim();
+  const normalized = number.replace(/[ ().-]/g, '');
+  if (!/^\+?[0-9]{7,20}$/.test(normalized)) return `<small>${esc(number)}</small>`;
+  return `<small><a href="tel:${esc(normalized)}">${esc(number)}</a></small>`;
+}
+
 function toast(message) {
   toastNode.textContent = message;
   toastNode.style.display = 'block';
@@ -63,7 +71,7 @@ async function signIn(username, password) {
   trainerScheduleDate = '';
   trainerScheduleStatus = 'Scheduled';
   if (!user.mustChangePassword) await loadData();
-  page = user.mustChangePassword ? 'password' : user.role === 'Member' ? 'member' : user.role === 'Trainer' ? 'trainer' : 'home';
+  page = user.mustChangePassword ? 'password' : 'home';
   render();
 }
 
@@ -73,7 +81,7 @@ async function restoreSession() {
     user = await API.currentUser();
     data = emptyState();
     if (!user.mustChangePassword) await loadData();
-    page = user.mustChangePassword ? 'password' : user.role === 'Member' ? 'member' : user.role === 'Trainer' ? 'trainer' : 'home';
+    page = user.mustChangePassword ? 'password' : 'home';
   } catch (error) {
     API.clearToken();
     user = null;
@@ -200,8 +208,8 @@ function schedulePage(mode) {
   const cells = item => {
     const status = item.displayStatus || item.status;
     return `<tr><td>${esc(item.start_time)}–${esc(item.end_time)}</td>`
-      + (mode !== 'member' ? `<td>${esc(member(item.member_id)?.full_name || `Member ${item.member_id}`)}</td>` : '')
-      + (mode !== 'trainer' ? `<td>${esc(trainer(item.trainer_id)?.full_name || `Trainer ${item.trainer_id}`)}</td>` : '')
+      + (mode !== 'member' ? `<td>${esc(item.member?.full_name || member(item.member_id)?.full_name || `Member ${item.member_id}`)}${mode === 'trainer' ? contactPhone(item.member?.phone ?? member(item.member_id)?.phone) : ''}</td>` : '')
+      + (mode !== 'trainer' ? `<td>${esc(item.trainer?.full_name || trainer(item.trainer_id)?.full_name || `Trainer ${item.trainer_id}`)}${mode === 'member' ? contactPhone(item.trainer?.phone ?? trainer(item.trainer_id)?.phone) : ''}</td>` : '')
       + `<td>${esc(item.note || '—')}</td><td>${badge(status)}</td>`
       + (mode === 'staff' ? `<td>${status === 'Scheduled' ? button('Edit', 'edit-session', item.id) + button('Cancel', 'cancel-session', item.id) : '—'}</td>` : '') + '</tr>';
   };
@@ -228,9 +236,43 @@ function memberPortal() {
   return heading('My membership', 'Your profile, memberships and training sessions.') + `<section class="card card-pad"><h2>${esc(profile.full_name)}</h2><p>${esc(profile.phone)} · ${esc(profile.email || '—')}</p><p>${esc(profile.training_objective || 'No training objective')}</p></section><section class="card section-gap"><div class="card-head"><h2>Memberships</h2></div>${recordsTable(['Plan', 'Period', 'Price', 'Status'], data.memberships, item => `<tr><td>${esc(plan(item.plan_id)?.name || item.membership_plan?.name || 'Membership')}</td><td>${date(item.start_date)} to ${date(item.end_date)}</td><td>${money(item.price_at_registration)}</td><td>${badge(statusOfMembership(item))}</td></tr>`)}</section><div class="section-gap">${sessionPage(true)}</div>`;
 }
 
+function upcomingSessions() {
+  return data.sessions.filter(item => (item.displayStatus || item.status) === 'Scheduled'
+      && item.session_date >= today())
+    .slice().sort((a, b) => `${a.session_date}${a.start_time}`.localeCompare(`${b.session_date}${b.start_time}`));
+}
+
+function memberOverview() {
+  const activeMembership = data.memberships.filter(item => statusOfMembership(item) === 'Active')
+    .slice().sort((a, b) => b.start_date.localeCompare(a.start_date))[0];
+  const next = upcomingSessions()[0];
+  const planName = activeMembership
+    ? plan(activeMembership.plan_id)?.name || activeMembership.membership_plan?.name || 'Membership'
+    : 'No active membership';
+  const nextInfo = next
+    ? `${date(next.session_date)} · ${next.start_time}–${next.end_time}`
+    : 'No upcoming sessions';
+  const trainerName = next ? trainer(next.trainer_id)?.full_name || next.trainer?.full_name || '—' : '—';
+  return heading('Overview', `Welcome, ${user.fullName}.`)
+    + `<div class="quick-grid"><section class="card card-pad"><h2>${esc(planName)}</h2><p>Current membership</p>${activeMembership ? badge('Active') : ''}</section>`
+    + `<section class="card card-pad"><h2>${activeMembership ? esc(date(activeMembership.end_date)) : '—'}</h2><p>Membership ends</p></section>`
+    + `<section class="card card-pad"><h2>${esc(nextInfo)}</h2><p>Next session · Trainer: ${esc(trainerName)}</p></section></div>`
+    + `<div class="overview-actions"><button class="btn primary" data-nav="member">View membership and schedule</button></div>`;
+}
+
+function trainerOverview() {
+  const upcoming = upcomingSessions();
+  const nearest = upcoming.slice(0, 5);
+  return heading('Overview', `Welcome, ${user.fullName}.`)
+    + `<div class="quick-grid"><section class="card card-pad"><h2>${upcoming.length}</h2><p>Upcoming sessions</p></section>`
+    + `<section class="card card-pad"><h2>${upcoming[0] ? esc(date(upcoming[0].session_date)) : '—'}</h2><p>Next session date</p></section></div>`
+    + `<section class="card section-gap"><div class="card-head"><h2>Next sessions</h2><button class="btn small" data-nav="trainer">View full schedule</button></div>`
+    + recordsTable(['Date / time', 'Member', 'Status'], nearest, item => `<tr><td>${esc(date(item.session_date))}<small>${esc(item.start_time)}–${esc(item.end_time)}</small></td><td>${esc(member(item.member_id)?.full_name || item.member?.full_name || `Member ${item.member_id}`)}</td><td>${badge(item.displayStatus || item.status)}</td></tr>`, 'No upcoming sessions.') + '</section>';
+}
+
 function homePage() {
-  if (user.role === 'Member') return memberPortal();
-  if (user.role === 'Trainer') return trainerSchedulePage();
+  if (user.role === 'Member') return memberOverview();
+  if (user.role === 'Trainer') return trainerOverview();
   const upcoming = data.sessions.filter(item => (item.displayStatus || item.status) === 'Scheduled').slice(0, 5);
   return heading('Overview', 'Live data from the gym backend.') + `<div class="quick-grid"><section class="card card-pad"><h2>${data.members.length}</h2><p>Members</p></section><section class="card card-pad"><h2>${data.trainers.length}</h2><p>Trainers</p></section><section class="card card-pad"><h2>${data.expirations.length}</h2><p>Memberships to follow up</p></section></div><section class="card section-gap">${recordsTable(['Date / time', 'Member', 'Trainer', 'Note', 'Status'], upcoming, item => `<tr><td>${date(item.session_date)} ${item.start_time}</td><td>${esc(member(item.member_id)?.full_name || '—')}</td><td>${esc(trainer(item.trainer_id)?.full_name || '—')}</td><td>${esc(item.note || '—')}</td><td>${badge(item.displayStatus || item.status)}</td>`)}</section>`;
 }
@@ -512,7 +554,7 @@ async function handleSubmit(event) {
     if (form.id === 'password-form') {
       const result = await API.changePassword(values.currentPassword, values.newPassword, values.confirmPassword);
       user = result;
-      page = user.role === 'Member' ? 'member' : user.role === 'Trainer' ? 'trainer' : 'home';
+      page = 'home';
       render();
       try {
         await loadData();

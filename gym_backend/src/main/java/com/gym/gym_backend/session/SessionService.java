@@ -84,12 +84,12 @@ public class SessionService {
 
     public List<Map<String, Object>> trainerSchedule(long trainerId) {
         return withCalculated(db.select("training_session", Map.of("trainer_id", "eq." + trainerId),
-                "session_date.asc,start_time.asc", 500, "*,member(full_name,training_objective)"));
+                "session_date.asc,start_time.asc", 500, "*,member(full_name,phone,training_objective)"));
     }
 
     public List<Map<String, Object>> memberSchedule(long memberId) {
         return withCalculated(db.select("training_session", Map.of("member_id", "eq." + memberId),
-                "session_date.desc,start_time.desc", 500, "*,trainer(full_name)"));
+                "session_date.desc,start_time.desc", 500, "*,trainer(full_name,phone)"));
     }
 
     private Map<String, Object> one(long id) {

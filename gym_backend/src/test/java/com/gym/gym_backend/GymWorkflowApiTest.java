@@ -116,7 +116,7 @@ class GymWorkflowApiTest {
                 eq("*,membership_plan(name,duration_months,benefits)")))
                 .thenAnswer(call -> List.of(new HashMap<>(savedMembership)));
         when(db.select(eq("training_session"), eq(Map.of("member_id", "eq.31")),
-                eq("session_date.desc,start_time.desc"), eq(500), eq("*,trainer(full_name)")))
+                eq("session_date.desc,start_time.desc"), eq(500), eq("*,trainer(full_name,phone)")))
                 .thenAnswer(call -> List.of(new HashMap<>(savedSession)));
     }
 

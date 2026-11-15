@@ -163,6 +163,34 @@ test('member schedule groups sessions and offers date and status filters without
   assert.equal((html.match(/class="card schedule-day"/g) || []).length, 1);
 });
 
+test('member and trainer see only the other participant phone on each session', () => {
+  const state = trainerScheduleFixture();
+  vm.runInContext(`
+    data.sessions = [{ member_id: 1, trainer_id: 1, session_date: '2026-11-19', start_time: '08:00',
+      end_time: '09:00', status: 'Scheduled', displayStatus: 'Scheduled',
+      member: { full_name: 'Member One', phone: '090 222 2222' },
+      trainer: { full_name: 'Coach One', phone: '+84 (90) 111-1111' } }];
+    user = { role: 'Member', fullName: 'Member', mustChangePassword: false };
+  `, state.context);
+  let html = vm.runInContext('sessionPage(true)', state.context);
+  assert.match(html, /Coach One/);
+  assert.match(html, /href="tel:\+84901111111"/);
+  assert.doesNotMatch(html, /090 222 2222/);
+  vm.runInContext("user = { role: 'Trainer', fullName: 'Coach', mustChangePassword: false }", state.context);
+  html = vm.runInContext('trainerSchedulePage()', state.context);
+  assert.match(html, /Member One/);
+  assert.match(html, /href="tel:0902222222"/);
+  assert.doesNotMatch(html, /\+84 \(90\) 111-1111/);
+});
+
+test('contact phone handles missing and unsafe values without an unsafe link', () => {
+  const state = appWith();
+  assert.match(vm.runInContext('contactPhone(null)', state.context), /Phone unavailable/);
+  const html = vm.runInContext(`contactPhone('<script>alert(1)</script>')`, state.context);
+  assert.doesNotMatch(html, /<script>|href=/);
+  assert.match(html, /&lt;script&gt;/);
+});
+
 test('staff schedule retains creation, editing, cancellation, and search', () => {
   const state = trainerScheduleFixture();
   vm.runInContext(`
@@ -184,6 +212,58 @@ test('staff schedule retains creation, editing, cancellation, and search', () =>
   html = vm.runInContext('sessionPage()', state.context);
   assert.match(html, /Past Member/);
   assert.doesNotMatch(html, /data-action="edit-session"|data-action="cancel-session"/);
+});
+
+test('member overview shows the active plan and nearest scheduled session', () => {
+  const state = trainerScheduleFixture();
+  vm.runInContext(`
+    user = { role: 'Member', fullName: 'Member', mustChangePassword: false };
+    data.memberships = [
+      { plan_id: 1, start_date: '2026-11-01', end_date: '2026-11-30', membershipStatus: 'Active' },
+      { plan_id: 2, start_date: '2026-12-01', end_date: '2026-12-31', membershipStatus: 'Upcoming' }
+    ];
+    data.plans = [{ plan_id: 1, name: 'Current Plan' }, { plan_id: 2, name: 'Future Plan' }];
+    data.trainers = [{ trainer_id: 1, full_name: 'Coach Example' }];
+    data.sessions.forEach(item => { item.trainer_id = 1; });
+  `, state.context);
+  const html = vm.runInContext('homePage()', state.context);
+  assert.match(html, /Current Plan/);
+  assert.doesNotMatch(html, /Future Plan/);
+  assert.match(html, /08:00–09:00/);
+  assert.match(html, /Coach Example/);
+  assert.match(html, /data-nav="member"/);
+});
+
+test('member overview explains when there is no active plan or upcoming session', () => {
+  const state = appWith();
+  vm.runInContext("user = { role: 'Member', fullName: 'Member', mustChangePassword: false }", state.context);
+  const html = vm.runInContext('homePage()', state.context);
+  assert.match(html, /No active membership/);
+  assert.match(html, /No upcoming sessions/);
+});
+
+test('trainer overview counts and sorts upcoming sessions and links to full schedule', () => {
+  const state = trainerScheduleFixture();
+  const html = vm.runInContext('homePage()', state.context);
+  assert.match(html, /<h2>2<\/h2><p>Upcoming sessions/);
+  assert.ok(html.indexOf('Future One') < html.indexOf('Future Two'));
+  assert.doesNotMatch(html, /Past Member|Cancelled Member/);
+  assert.match(html, /data-nav="trainer"/);
+  const empty = appWith();
+  vm.runInContext("user = { role: 'Trainer', fullName: 'Trainer', mustChangePassword: false }", empty.context);
+  assert.match(vm.runInContext('homePage()', empty.context), /No upcoming sessions/);
+});
+
+test('member and trainer enter overview after login and can open details', async () => {
+  for (const [role, target, expected] of [['Member', 'member', 'My membership'], ['Trainer', 'trainer', 'My assigned schedule']]) {
+    const state = appWith({ login: async () => ({ role, fullName: role, mustChangePassword: false }) });
+    await vm.runInContext("signIn('user', 'password')", state.context);
+    assert.equal(vm.runInContext('page', state.context), 'home');
+    const nav = { dataset: { nav: target } };
+    await state.app.listeners.click({ target: { closest: selector => selector === '[data-nav]' ? nav : null } });
+    assert.equal(vm.runInContext('page', state.context), target);
+    assert.match(state.app.innerHTML, new RegExp(expected));
+  }
 });
 
 test('first login opens password page without requesting protected data', async () => {
