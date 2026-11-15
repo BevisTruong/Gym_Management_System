@@ -10,6 +10,9 @@ let user = null;
 let page = 'home';
 let query = '';
 let filter = '';
+let trainerScheduleRange = 'upcoming';
+let trainerScheduleDate = '';
+let trainerScheduleStatus = 'Scheduled';
 let toastTimer;
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -56,6 +59,9 @@ async function loadData() {
 async function signIn(username, password) {
   user = await API.login(username, password);
   data = emptyState();
+  trainerScheduleRange = 'upcoming';
+  trainerScheduleDate = '';
+  trainerScheduleStatus = 'Scheduled';
   if (!user.mustChangePassword) await loadData();
   page = user.mustChangePassword ? 'password' : user.role === 'Member' ? 'member' : user.role === 'Trainer' ? 'trainer' : 'home';
   render();
@@ -142,10 +148,69 @@ function trainerPage() {
 }
 
 function sessionPage(portal = false) {
-  const records = (portal ? data.sessions : filtered(data.sessions)).slice().sort((a, b) => `${a.session_date}${a.start_time}`.localeCompare(`${b.session_date}${b.start_time}`));
-  const add = !portal ? button('Create session', 'new-session', '', true) : '';
-  const cells = item => `<tr><td><strong>${date(item.session_date)}</strong><small>${item.start_time}–${item.end_time}</small></td><td>${esc(member(item.member_id)?.full_name || `Member ${item.member_id}`)}</td><td>${esc(trainer(item.trainer_id)?.full_name || `Trainer ${item.trainer_id}`)}</td><td>${esc(item.note || '—')}</td><td>${badge(item.displayStatus || item.status)}</td>${portal ? '' : `<td>${(item.displayStatus || item.status) === 'Scheduled' ? button('Edit', 'edit-session', item.id) + button('Cancel', 'cancel-session', item.id) : '—'}</td>`}</tr>`;
-  return heading(portal ? 'My assigned schedule' : 'Training sessions', portal ? 'Sessions assigned to your trainer account.' : 'Create sessions and let the backend enforce scheduling rules.', add) + `<section class="card">${!portal ? searchControls() : ''}${recordsTable(['Date / time', 'Member', 'Trainer', 'Note', 'Status', ...(portal ? [] : [''])], records, cells)}</section>`;
+  return schedulePage(portal ? 'member' : 'staff');
+}
+
+function trainerSchedulePage() {
+  return schedulePage('trainer');
+}
+
+function schedulePage(mode) {
+  const now = new Date();
+  const localDate = value => {
+    const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 10);
+  };
+  const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  weekStart.setDate(weekStart.getDate() - (weekStart.getDay() + 6) % 7);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  const currentDate = localDate(now);
+  const firstDay = localDate(weekStart);
+  const lastDay = localDate(weekEnd);
+  const sessions = data.sessions.filter(item => {
+    const status = item.displayStatus || item.status;
+    if (trainerScheduleStatus && status !== trainerScheduleStatus) return false;
+    if (mode === 'staff' && query) {
+      const text = [member(item.member_id)?.full_name, trainer(item.trainer_id)?.full_name,
+        item.member_id, item.trainer_id, item.id, item.note].join(' ').toLowerCase();
+      if (!text.includes(query.toLowerCase())) return false;
+    }
+    if (trainerScheduleRange === 'upcoming') return item.session_date >= currentDate;
+    if (trainerScheduleRange === 'today') return item.session_date === currentDate;
+    if (trainerScheduleRange === 'week') return item.session_date >= firstDay && item.session_date <= lastDay;
+    if (trainerScheduleRange === 'date') return Boolean(trainerScheduleDate) && item.session_date === trainerScheduleDate;
+    return true;
+  }).slice().sort((a, b) => `${a.session_date}${a.start_time}`.localeCompare(`${b.session_date}${b.start_time}`));
+
+  const ranges = [['upcoming', 'Upcoming dates'], ['today', 'Today'], ['week', 'This week'], ['date', 'Choose a date'], ['all', 'All dates']];
+  const statuses = [['Scheduled', 'Scheduled'], ['', 'All statuses'], ['Completed', 'Completed'], ['Cancelled', 'Cancelled']];
+  const controls = `<section class="card schedule-filters" aria-label="Schedule filters">
+    ${mode === 'staff' ? `<div class="field"><label for="schedule-search">Search</label><input id="schedule-search" type="search" value="${esc(query)}" placeholder="Member, trainer or note"></div>` : ''}
+    ${formField('Date range', 'trainer-range', trainerScheduleRange, 'text', false, ranges)}
+    ${trainerScheduleRange === 'date' ? formField('Date', 'trainer-date', trainerScheduleDate, 'date') : ''}
+    ${formField('Status', 'trainer-status', trainerScheduleStatus, 'text', false, statuses)}
+  </section>`;
+  const groups = new Map();
+  sessions.forEach(item => {
+    if (!groups.has(item.session_date)) groups.set(item.session_date, []);
+    groups.get(item.session_date).push(item);
+  });
+  const headers = ['Time', ...(mode !== 'member' ? ['Member'] : []), ...(mode !== 'trainer' ? ['Trainer'] : []), 'Note', 'Status', ...(mode === 'staff' ? [''] : [])];
+  const cells = item => {
+    const status = item.displayStatus || item.status;
+    return `<tr><td>${esc(item.start_time)}–${esc(item.end_time)}</td>`
+      + (mode !== 'member' ? `<td>${esc(member(item.member_id)?.full_name || `Member ${item.member_id}`)}</td>` : '')
+      + (mode !== 'trainer' ? `<td>${esc(trainer(item.trainer_id)?.full_name || `Trainer ${item.trainer_id}`)}</td>` : '')
+      + `<td>${esc(item.note || '—')}</td><td>${badge(status)}</td>`
+      + (mode === 'staff' ? `<td>${status === 'Scheduled' ? button('Edit', 'edit-session', item.id) + button('Cancel', 'cancel-session', item.id) : '—'}</td>` : '') + '</tr>';
+  };
+  const sections = [...groups.entries()].map(([day, items]) => `<section class="card schedule-day"><div class="card-head"><h2>${esc(date(day))}</h2></div>${recordsTable(headers, items, cells)}</section>`).join('');
+  const emptyMessage = trainerScheduleRange === 'date' && !trainerScheduleDate ? 'Choose a date to see your sessions.' : 'No sessions match the selected filters.';
+  const title = mode === 'staff' ? 'Training sessions' : mode === 'member' ? 'My training schedule' : 'My assigned schedule';
+  const description = mode === 'staff' ? 'Create and manage training sessions.' : mode === 'member' ? 'Your training sessions.' : 'Sessions assigned to your trainer account.';
+  return heading(title, description, mode === 'staff' ? button('Create session', 'new-session', '', true) : '') + controls
+    + (sections || `<section class="card card-pad schedule-day">${esc(emptyMessage)}</section>`);
 }
 
 function expirationPage() {
@@ -160,12 +225,12 @@ function accountPage() {
 function memberPortal() {
   const profile = data.members[0];
   if (!profile) return heading('My membership', 'No linked member profile was returned by the backend.') + '<section class="card card-pad">Contact an administrator to link your account.</section>';
-  return heading('My membership', 'Your profile, memberships and training sessions.') + `<section class="card card-pad"><h2>${esc(profile.full_name)}</h2><p>${esc(profile.phone)} · ${esc(profile.email || '—')}</p><p>${esc(profile.training_objective || 'No training objective')}</p></section><section class="card section-gap"><div class="card-head"><h2>Memberships</h2></div>${recordsTable(['Plan', 'Period', 'Price', 'Status'], data.memberships, item => `<tr><td>${esc(plan(item.plan_id)?.name || item.membership_plan?.name || 'Membership')}</td><td>${date(item.start_date)} to ${date(item.end_date)}</td><td>${money(item.price_at_registration)}</td><td>${badge(statusOfMembership(item))}</td></tr>`)}</section><section class="card section-gap">${sessionPage(true)}</section>`;
+  return heading('My membership', 'Your profile, memberships and training sessions.') + `<section class="card card-pad"><h2>${esc(profile.full_name)}</h2><p>${esc(profile.phone)} · ${esc(profile.email || '—')}</p><p>${esc(profile.training_objective || 'No training objective')}</p></section><section class="card section-gap"><div class="card-head"><h2>Memberships</h2></div>${recordsTable(['Plan', 'Period', 'Price', 'Status'], data.memberships, item => `<tr><td>${esc(plan(item.plan_id)?.name || item.membership_plan?.name || 'Membership')}</td><td>${date(item.start_date)} to ${date(item.end_date)}</td><td>${money(item.price_at_registration)}</td><td>${badge(statusOfMembership(item))}</td></tr>`)}</section><div class="section-gap">${sessionPage(true)}</div>`;
 }
 
 function homePage() {
   if (user.role === 'Member') return memberPortal();
-  if (user.role === 'Trainer') return sessionPage(true);
+  if (user.role === 'Trainer') return trainerSchedulePage();
   const upcoming = data.sessions.filter(item => (item.displayStatus || item.status) === 'Scheduled').slice(0, 5);
   return heading('Overview', 'Live data from the gym backend.') + `<div class="quick-grid"><section class="card card-pad"><h2>${data.members.length}</h2><p>Members</p></section><section class="card card-pad"><h2>${data.trainers.length}</h2><p>Trainers</p></section><section class="card card-pad"><h2>${data.expirations.length}</h2><p>Memberships to follow up</p></section></div><section class="card section-gap">${recordsTable(['Date / time', 'Member', 'Trainer', 'Note', 'Status'], upcoming, item => `<tr><td>${date(item.session_date)} ${item.start_time}</td><td>${esc(member(item.member_id)?.full_name || '—')}</td><td>${esc(trainer(item.trainer_id)?.full_name || '—')}</td><td>${esc(item.note || '—')}</td><td>${badge(item.displayStatus || item.status)}</td>`)}</section>`;
 }
@@ -183,7 +248,7 @@ function pageContent() {
     case 'expirations': return expirationPage();
     case 'accounts': return accountPage();
     case 'member': return memberPortal();
-    case 'trainer': return sessionPage(true);
+    case 'trainer': return trainerSchedulePage();
     case 'password': return passwordPage();
     default: return homePage();
   }
@@ -362,8 +427,16 @@ modal.addEventListener('click', handleClick);
 
 app.addEventListener('input', event => {
   if (event.target.id === 'search-records') { query = event.target.value; render(); const input = document.querySelector('#search-records'); input?.focus(); input?.setSelectionRange(query.length, query.length); }
+  if (event.target.id === 'schedule-search') { query = event.target.value; render(); const input = document.querySelector('#schedule-search'); input?.focus(); input?.setSelectionRange(query.length, query.length); }
 });
-app.addEventListener('change', event => { if (event.target.id === 'filter-status') { filter = event.target.value; render(); } });
+app.addEventListener('change', event => {
+  if (event.target.id === 'filter-status') filter = event.target.value;
+  else if (event.target.id === 'trainer-range') trainerScheduleRange = event.target.value;
+  else if (event.target.id === 'trainer-date') trainerScheduleDate = event.target.value;
+  else if (event.target.id === 'trainer-status') trainerScheduleStatus = event.target.value;
+  else return;
+  render();
+});
 
 async function handleSubmit(event) {
   const form = event.target;

@@ -99,6 +99,93 @@ test('membership filter continues to use membership status', () => {
   assert.doesNotMatch(html, /Member 2/);
 });
 
+function trainerScheduleFixture() {
+  const state = appWith();
+  state.context.Date = class extends Date {
+    constructor(...args) { super(...(args.length ? args : [2026, 10, 18, 12, 0, 0])); }
+    static now() { return new Date(2026, 10, 18, 12, 0, 0).getTime(); }
+  };
+  vm.runInContext(`
+    user = { role: 'Trainer', fullName: 'Trainer', trainerId: 1, mustChangePassword: false };
+    page = 'trainer';
+    data.members = [
+      { member_id: 1, full_name: 'Future One' }, { member_id: 2, full_name: 'Future Two' },
+      { member_id: 3, full_name: 'Past Member' }, { member_id: 4, full_name: 'Cancelled Member' }
+    ];
+    data.sessions = [
+      { member_id: 2, session_date: '2026-11-19', start_time: '10:00', end_time: '11:00', status: 'Scheduled', displayStatus: 'Scheduled' },
+      { member_id: 1, session_date: '2026-11-19', start_time: '08:00', end_time: '09:00', status: 'Scheduled', displayStatus: 'Scheduled' },
+      { member_id: 3, session_date: '2026-11-16', start_time: '08:00', end_time: '09:00', status: 'Scheduled', displayStatus: 'Completed' },
+      { member_id: 4, session_date: '2026-11-20', start_time: '08:00', end_time: '09:00', status: 'Cancelled', displayStatus: 'Cancelled' }
+    ];
+  `, state.context);
+  return state;
+}
+
+test('trainer schedule defaults to upcoming scheduled sessions grouped by date and time', () => {
+  const state = trainerScheduleFixture();
+  const html = vm.runInContext('trainerSchedulePage()', state.context);
+  assert.match(html, /Future One/);
+  assert.match(html, /Future Two/);
+  assert.doesNotMatch(html, /Past Member|Cancelled Member/);
+  assert.ok(html.indexOf('Future One') < html.indexOf('Future Two'));
+  assert.equal((html.match(/class="card schedule-day"/g) || []).length, 1);
+});
+
+test('trainer can filter past or cancelled sessions by week, date, and status', () => {
+  const state = trainerScheduleFixture();
+  vm.runInContext("trainerScheduleRange = 'week'; trainerScheduleStatus = 'Completed'", state.context);
+  let html = vm.runInContext('trainerSchedulePage()', state.context);
+  assert.match(html, /Past Member/);
+  assert.doesNotMatch(html, /Future One|Cancelled Member/);
+
+  state.app.listeners.change({ target: { id: 'trainer-range', value: 'date' } });
+  state.app.listeners.change({ target: { id: 'trainer-date', value: '2026-11-20' } });
+  state.app.listeners.change({ target: { id: 'trainer-status', value: 'Cancelled' } });
+  html = state.app.innerHTML;
+  assert.match(html, /Cancelled Member/);
+  assert.doesNotMatch(html, /Past Member|Future One/);
+});
+
+test('member schedule groups sessions and offers date and status filters without management buttons', () => {
+  const state = trainerScheduleFixture();
+  vm.runInContext(`
+    user = { role: 'Member', fullName: 'Member', mustChangePassword: false };
+    data.trainers = [{ trainer_id: 1, full_name: 'Coach Example' }];
+    data.sessions.forEach(item => { item.trainer_id = 1; });
+  `, state.context);
+  const html = vm.runInContext('sessionPage(true)', state.context);
+  assert.match(html, /My training schedule/);
+  assert.match(html, /Coach Example/);
+  assert.match(html, /trainer-range/);
+  assert.match(html, /trainer-status/);
+  assert.doesNotMatch(html, /Past Member|Cancelled Member|data-action="edit-session"|data-action="cancel-session"/);
+  assert.equal((html.match(/class="card schedule-day"/g) || []).length, 1);
+});
+
+test('staff schedule retains creation, editing, cancellation, and search', () => {
+  const state = trainerScheduleFixture();
+  vm.runInContext(`
+    user = { role: 'Staff', fullName: 'Staff', mustChangePassword: false };
+    page = 'sessions';
+    data.trainers = [{ trainer_id: 1, full_name: 'Coach Example' }];
+    data.sessions.forEach((item, i) => { item.trainer_id = 1; item.id = i + 1; });
+  `, state.context);
+  let html = vm.runInContext('sessionPage()', state.context);
+  assert.match(html, /data-action="new-session"/);
+  assert.match(html, /data-action="edit-session"/);
+  assert.match(html, /data-action="cancel-session"/);
+  assert.match(html, /Coach Example/);
+  vm.runInContext("query = 'Future One'", state.context);
+  html = vm.runInContext('sessionPage()', state.context);
+  assert.match(html, /Future One/);
+  assert.doesNotMatch(html, /Future Two/);
+  vm.runInContext("trainerScheduleRange = 'all'; trainerScheduleStatus = 'Completed'; query = ''", state.context);
+  html = vm.runInContext('sessionPage()', state.context);
+  assert.match(html, /Past Member/);
+  assert.doesNotMatch(html, /data-action="edit-session"|data-action="cancel-session"/);
+});
+
 test('first login opens password page without requesting protected data', async () => {
   let loads = 0;
   const { context, app } = appWith({
