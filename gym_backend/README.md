@@ -35,6 +35,8 @@ if (!(Test-Path gym_backend/.env)) {
 
 ## Chạy backend
 
+Có thể chạy backend cùng giao diện bằng Docker Compose từ thư mục gốc: `docker compose up --build`. Compose đọc `gym_backend/.env` và kết nối Supabase Cloud. Xem README gốc để biết cổng và cách dừng.
+
 Cần cài Java 21. Từ thư mục `gym_backend`:
 
 ```powershell

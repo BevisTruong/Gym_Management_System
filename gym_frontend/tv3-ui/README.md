@@ -4,6 +4,10 @@ This folder contains the HTML/CSS/JavaScript interface and its live API integrat
 
 ## Run the connected application
 
+From the repository root, Docker Desktop users can run `docker compose up --build` after configuring `gym_backend/.env`. Open `http://localhost:5173/`; stop with `Ctrl+C` or `docker compose down`. This uses the configured Supabase Cloud project, not a database container.
+
+To run without Docker:
+
 Start the backend first from `gym_backend`:
 
 ```powershell
